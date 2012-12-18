@@ -611,8 +611,12 @@ public class Session implements Serializable {
         if (this.tokenCachingStrategy != null) {
             this.tokenCachingStrategy.clear();
         }
-        Utility.clearFacebookCookies(staticContext);
-        Utility.clearCaches(staticContext);
+
+        // ANDROID-1198 - staticContext is null after force close
+        if (staticContext != null) {
+            Utility.clearFacebookCookies(staticContext);
+            Utility.clearCaches(staticContext);
+        }        
         close();
     }
 
