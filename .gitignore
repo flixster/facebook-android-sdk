@@ -4,6 +4,7 @@
 *java#
 *.settings
 local.properties
+.classpath
 .arc/
 bin/
 gen/
