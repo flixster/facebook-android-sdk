@@ -16,11 +16,21 @@
 
 package com.facebook.ads.internal;
 
-import java.util.Collection;
+import java.util.Locale;
 
-public interface AdDataModel {
+public enum AdInvalidationBehavior {
+    NONE,
+    INSTALLED,
+    NOT_INSTALLED;
 
-    public AdInvalidationBehavior getInvalidationBehavior();
-
-    public Collection<String> getDetectionStrings();
+    public static AdInvalidationBehavior fromString(String invalidationBehaviorStr) {
+        if (StringUtils.isNullOrEmpty(invalidationBehaviorStr)) {
+            return AdInvalidationBehavior.NONE;
+        }
+        try {
+            return AdInvalidationBehavior.valueOf(invalidationBehaviorStr.toUpperCase(Locale.US));
+        } catch (IllegalArgumentException ex) {
+            return AdInvalidationBehavior.NONE;
+        }
+    }
 }

@@ -26,56 +26,57 @@ import android.net.NetworkInfo;
 import android.os.AsyncTask;
 import android.os.Bundle;
 import android.os.Handler;
-import android.util.Log;
 import android.view.View;
-import com.facebook.FacebookRequestError;
-import com.facebook.RequestAsyncTask;
+import com.facebook.ads.AdError;
+import com.facebook.ads.AdSettings;
 import com.facebook.ads.AdSize;
 import com.facebook.ads.AdTargetingOptions;
 
 public class AdRequestController {
 
     private static final String TAG = AdRequestController.class.getSimpleName();
-    private static final int REFRESH_INTERVAL_MIN_SECONDS = 30;
+    private static final int MIN_REFRESH_INTERVAL_MILLIS = 30000;
 
     private static final String REFRESH_INTERVAL_KEY = "AdRequestController_refreshInterval";
-    private static final String INITIAL_LOAD_REQUESTED_KEY = "AdRequestController_initialLoadRequested";
+    private static final String INITIAL_LOAD_FINISHED_KEY = "AdRequestController_initialLoadFinished";
+
+    private static final String ANDROID_PERMISSION_ACCESS_NETWORK_STATE = "android.permission.ACCESS_NETWORK_STATE";
 
     private final Context context;
     private final String placementId;
     private final AdSize adSize;
-    private final String userAgentString;
-    private final AdRequest.AdRequestListener adViewRequestListener;
-    private boolean testMode;
-    private boolean shouldRefresh = true;
+    private final AdRequest.Callback adViewRequestCallback;
+    private final AdType adType;
+    private final boolean shouldRefresh;
     private AdTargetingOptions targetingOptions;
-    private final ScreenStateReceiver screenStateReceiver = new ScreenStateReceiver();
+    private final ScreenStateReceiver screenStateReceiver;
 
-    private int refreshInterval = REFRESH_INTERVAL_MIN_SECONDS;
-    private boolean initialLoadRequested = false;
+    private int refreshInterval = MIN_REFRESH_INTERVAL_MILLIS;
+    private boolean initialLoadFinished = false;
 
     private volatile boolean refreshScheduled = false;
-    private Handler handler;
-    private Runnable refreshRunnable;
+    private final Handler handler;
+    private final Runnable refreshRunnable;
 
-    private RequestAsyncTask lastRequest;
+    private AsyncTask lastRequest;
 
     private int currentVisibility = View.GONE;
 
-    public AdRequestController(Context context, String placementId, AdSize adSize, String userAgentString,
-            AdRequest.AdRequestListener adViewRequestListener) {
+    public AdRequestController(Context context, String placementId, AdSize adSize,
+            boolean shouldRefresh, AdType adType, AdRequest.Callback adViewRequestCallback) {
         this.context = context;
         this.placementId = placementId;
         this.adSize = adSize;
-        this.userAgentString = userAgentString;
-        this.adViewRequestListener = adViewRequestListener;
+        this.shouldRefresh = shouldRefresh;
+        this.adType = adType;
+        this.adViewRequestCallback = adViewRequestCallback;
         targetingOptions = null;
+        screenStateReceiver = new ScreenStateReceiver();
 
         handler = new Handler();
         refreshRunnable = new Runnable() {
             @Override
             public void run() {
-                Log.d(TAG, "Refreshing ad");
                 refreshScheduled = false;
                 loadAd(targetingOptions);
             }
@@ -85,33 +86,38 @@ public class AdRequestController {
     }
 
     private void registerScreenStateReceiver() {
+        if (!shouldRefresh) {
+            return;
+        }
+
         IntentFilter filter = new IntentFilter(Intent.ACTION_SCREEN_ON);
         filter.addAction(Intent.ACTION_SCREEN_OFF);
         context.registerReceiver(screenStateReceiver, filter);
     }
 
     private void unregisterScreenStateReceiver() {
+        if (!shouldRefresh) {
+            return;
+        }
+
         context.unregisterReceiver(screenStateReceiver);
     }
 
     private synchronized void scheduleRefresh(String reason) {
         if (!shouldRefresh) {
-            Log.d(TAG, "should not schedule refresh");
             return;
         }
 
-        Log.d(TAG, "schedule refresh " + reason);
         if (refreshInterval > 0) {
             if (refreshScheduled) {
                 return;
             }
-            handler.postDelayed(refreshRunnable, refreshInterval * 1000);
+            handler.postDelayed(refreshRunnable, refreshInterval);
             refreshScheduled = true;
         }
     }
 
     private synchronized void cancelRefresh(String reason) {
-        Log.d(TAG, "cancel refresh " + reason);
         if (!refreshScheduled) {
             return;
         }
@@ -119,32 +125,16 @@ public class AdRequestController {
         refreshScheduled = false;
     }
 
-    public void setTestMode(boolean testMode) {
-        this.testMode = testMode;
-    }
-
-    public void setShouldRefresh(boolean shouldRefresh) {
-        this.shouldRefresh = shouldRefresh;
-        if (shouldRefresh) {
-            scheduleRefresh("should start refresh");
-        } else {
-            cancelRefresh("should stop refresh");
-        }
-    }
-
     public void loadAd(AdTargetingOptions targetingOptions) {
         this.targetingOptions = targetingOptions;
-
-        initialLoadRequested = true;
 
         if (lastRequest != null && lastRequest.getStatus() != AsyncTask.Status.FINISHED) {
             lastRequest.cancel(true);
         }
 
         if (!isNetworkConnected()) {
-            refreshInterval = REFRESH_INTERVAL_MIN_SECONDS;
-            adViewRequestListener.onError(new FacebookRequestError(
-                    FacebookRequestError.INVALID_ERROR_CODE, "network unavailable", "network unavailable"));
+            refreshInterval = MIN_REFRESH_INTERVAL_MILLIS;
+            adViewRequestCallback.onError(new AdError(AdError.INVALID_ERROR_CODE, "network unavailable"));
             scheduleRefresh("no network connection");
             return;
         }
@@ -153,27 +143,25 @@ public class AdRequestController {
                 context,
                 placementId,
                 adSize,
-                userAgentString,
-                new AdRequest.AdRequestListener() {
-                    @Override
-                    public void onLoading() {
-                        adViewRequestListener.onLoading();
-                    }
+                adType,
+                AdSettings.isTestMode(context),
+                new AdRequest.Callback() {
 
                     @Override
-                    public void onError(FacebookRequestError error) {
-                        adViewRequestListener.onError(error);
+                    public void onError(AdError error) {
+                        adViewRequestCallback.onError(error);
+                        initialLoadFinished = true;
                         scheduleRefresh("onError");
                     }
 
                     @Override
                     public void onCompleted(AdResponse adResponse) {
-                        refreshInterval = adResponse.getRefreshInterval();
-                        adViewRequestListener.onCompleted(adResponse);
+                        refreshInterval = adResponse.getRefreshIntervalMillis();
+                        adViewRequestCallback.onCompleted(adResponse);
+                        initialLoadFinished = true;
                         scheduleRefresh("onCompleted");
                     }
-                },
-                testMode
+                }
         );
         lastRequest = adRequest.executeAsync();
     }
@@ -186,23 +174,23 @@ public class AdRequestController {
     public Bundle onSaveInstanceState() {
         Bundle instanceState = new Bundle();
         instanceState.putInt(REFRESH_INTERVAL_KEY, refreshInterval);
-        instanceState.putBoolean(INITIAL_LOAD_REQUESTED_KEY, initialLoadRequested);
+        instanceState.putBoolean(INITIAL_LOAD_FINISHED_KEY, initialLoadFinished);
         return instanceState;
     }
 
     public void onRestoreInstanceState(Bundle instanceState) {
-        refreshInterval = instanceState.getInt(REFRESH_INTERVAL_KEY, REFRESH_INTERVAL_MIN_SECONDS);
-        initialLoadRequested = instanceState.getBoolean(INITIAL_LOAD_REQUESTED_KEY, false);
+        refreshInterval = instanceState.getInt(REFRESH_INTERVAL_KEY, MIN_REFRESH_INTERVAL_MILLIS);
+        initialLoadFinished = instanceState.getBoolean(INITIAL_LOAD_FINISHED_KEY, false);
     }
 
     public void onWindowVisibilityChanged(int visibility) {
         currentVisibility = visibility;
         if (visibility == View.VISIBLE) {
             // When the window first becomes visible (no ad has been requested), we don't want to schedule
-            // a refresh at that time.
+            // a refresh at that time. Wait until the initial load has finished.
             // When returning to the app from play store, onRestoreInstanceState() is not called so we need
             // to schedule a refresh to keep new ads coming.
-            if (initialLoadRequested) {
+            if (initialLoadFinished) {
                 scheduleRefresh("onWindowVisibilityChanged");
             }
         } else {
@@ -211,8 +199,7 @@ public class AdRequestController {
     }
 
     private boolean isNetworkConnected() {
-        String permission = "android.permission.ACCESS_NETWORK_STATE";
-        int result = context.checkCallingOrSelfPermission(permission);
+        int result = context.checkCallingOrSelfPermission(ANDROID_PERMISSION_ACCESS_NETWORK_STATE);
         if (result != PackageManager.PERMISSION_GRANTED) {
             return true;
         }
@@ -225,9 +212,10 @@ public class AdRequestController {
     private class ScreenStateReceiver extends BroadcastReceiver {
         @Override
         public void onReceive(Context context, Intent intent) {
-            if (intent.getAction().equals(Intent.ACTION_SCREEN_OFF)) {
+            String action  = intent.getAction();
+            if (Intent.ACTION_SCREEN_OFF.equals(action)) {
                 cancelRefresh(intent.getAction());
-            } else if (intent.getAction().equals(Intent.ACTION_SCREEN_ON)) {
+            } else if (Intent.ACTION_SCREEN_ON.equals(action)) {
                 if (currentVisibility == View.VISIBLE) {
                     scheduleRefresh(intent.getAction());
                 }

@@ -16,11 +16,17 @@
 
 package com.facebook.ads.internal;
 
-import java.util.Collection;
+public enum AdType {
+    HTML(0),
+    NATIVE(1);
 
-public interface AdDataModel {
+    private final int value;
 
-    public AdInvalidationBehavior getInvalidationBehavior();
+    private AdType(int value) {
+        this.value = value;
+    }
 
-    public Collection<String> getDetectionStrings();
+    public int getValue() {
+        return value;
+    }
 }

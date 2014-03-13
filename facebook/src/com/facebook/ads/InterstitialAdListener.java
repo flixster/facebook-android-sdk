@@ -17,34 +17,19 @@
 package com.facebook.ads;
 
 /**
- * AdSize is the dimension of the ad control in DP.
+ * InterstitialAdListener interface is notified of events happened in InterstitialAd.
  */
-public enum AdSize {
-
-    BANNER_320_50(320, 50),
-    INTERSTITIAL(0, 0);
-
-    private final int width;
-    private final int height;
-
-    private AdSize(int width, int height) {
-        this.width = width;
-        this.height = height;
-    }
+public interface InterstitialAdListener extends AdListener {
 
     /**
-     * Gets the width of the ad control.
-     * @return width of the ad control in DP
+     * Called when the interstitial ad control is displayed.
+     * @param ad the ad control
      */
-    public int getWidth() {
-        return width;
-    }
+    void onInterstitialDisplayed(Ad ad);
 
     /**
-     * Gets the height of the ad control.
-     * @return height of the ad control in DP
+     * Called when the interstitial ad control is dismissed.
+     * @param ad the ad control
      */
-    public int getHeight() {
-        return height;
-    }
+    void onInterstitialDismissed(Ad ad);
 }

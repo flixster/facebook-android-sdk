@@ -14,13 +14,9 @@
  * limitations under the License.
  */
 
-package com.facebook.ads.internal;
+package com.facebook.ads.internal.action;
 
-import java.util.Collection;
+public interface AdAction {
 
-public interface AdDataModel {
-
-    public AdInvalidationBehavior getInvalidationBehavior();
-
-    public Collection<String> getDetectionStrings();
+    public void execute();
 }

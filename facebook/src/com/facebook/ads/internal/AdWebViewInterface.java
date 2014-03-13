@@ -16,11 +16,17 @@
 
 package com.facebook.ads.internal;
 
-import java.util.Collection;
+import android.content.Context;
 
-public interface AdDataModel {
+public class AdWebViewInterface {
 
-    public AdInvalidationBehavior getInvalidationBehavior();
+    private final Context context;
 
-    public Collection<String> getDetectionStrings();
+    public AdWebViewInterface(Context context) {
+        this.context = context;
+    }
+
+    public String getAnalogInfo() {
+        return AdUtilities.jsonEncode(AdAnalogData.getAnalogInfo(context));
+    }
 }

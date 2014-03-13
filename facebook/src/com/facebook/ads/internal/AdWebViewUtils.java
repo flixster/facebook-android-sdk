@@ -16,9 +16,16 @@
 
 package com.facebook.ads.internal;
 
+import android.content.Context;
 import android.webkit.WebView;
 
 public class AdWebViewUtils {
+
+	public static final String WEBVIEW_BASE_URL = "http://www.facebook.com/";
+
+    public static final String FBAD_SCHEME = "fbad";
+
+    private static String userAgentString = null;
 
     public static void config(WebView adWebView) {
         adWebView.getSettings().setJavaScriptEnabled(true);
@@ -27,5 +34,15 @@ public class AdWebViewUtils {
         adWebView.setHorizontalScrollbarOverlay(false);
         adWebView.setVerticalScrollBarEnabled(false);
         adWebView.setVerticalScrollbarOverlay(false);
+        adWebView.addJavascriptInterface(new AdWebViewInterface(adWebView.getContext()), "AdControl");
+    }
+
+    public static String getUserAgentString(Context context) {
+        if (userAgentString == null) {
+            WebView webView = new WebView(context.getApplicationContext());
+            userAgentString = webView.getSettings().getUserAgentString();
+            webView.destroy();
+        }
+        return userAgentString;
     }
 }

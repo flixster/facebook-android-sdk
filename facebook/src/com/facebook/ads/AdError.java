@@ -16,20 +16,42 @@
 
 package com.facebook.ads;
 
+/**
+ * AdError contains the error information returned by Facebook.
+ */
 public class AdError {
+
+    public static final AdError CLIENT_INVALIDATION = new AdError(2000, "Client Invalidation");
+    public static final AdError INTERNAL_ERROR = new AdError(2001, "Internal Error");
+    public static final AdError MISSING_PROPERTIES = new AdError(2002, "Native ad failed to load due to missing properties");
+
+    public static final int INVALID_ERROR_CODE = -1;
 
     private final int errorCode;
     private final String errorMessage;
 
+    /**
+     * Constructs an AdError using the given error code and error message
+     * @param errorCode the error code
+     * @param errorMessage the error message
+     */
     public AdError(int errorCode, String errorMessage) {
         this.errorCode = errorCode;
         this.errorMessage = errorMessage;
     }
 
+    /**
+     * Gets the error code
+     * @return the error code
+     */
     public int getErrorCode() {
         return errorCode;
     }
 
+    /**
+     * Gets the error message
+     * @return the error message
+     */
     public String getErrorMessage() {
         return errorMessage;
     }

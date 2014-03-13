@@ -16,47 +16,46 @@
 
 package com.facebook.ads.internal;
 
+import android.content.Context;
 import com.facebook.ads.AdError;
+import org.json.JSONArray;
 import org.json.JSONObject;
+
+import java.util.ArrayList;
+import java.util.List;
 
 public class AdResponse {
 
-    private static final String TAG = AdResponse.class.getSimpleName();
     private static final int DEFAULT_REFRESH_INTERVAL_SECONDS = 0;
 
-    private final int refreshInterval;
-    private final AdDataModel dataModel;
+    private final int refreshIntervalMillis;
+    private final List<AdDataModel> dataModels;
     private final AdError error;
 
-    public AdResponse(int refreshInterval, AdDataModel dataModel, AdError error) {
-        this.refreshInterval = refreshInterval;
-        this.dataModel = dataModel;
+    private AdResponse(int refreshIntervalMillis, List<AdDataModel> dataModels, AdError error) {
+        this.refreshIntervalMillis = refreshIntervalMillis;
+        this.dataModels = dataModels;
         this.error = error;
     }
 
-    public int getRefreshInterval() {
-        return refreshInterval;
+    public int getRefreshIntervalMillis() {
+        return refreshIntervalMillis;
     }
 
     public AdDataModel getDataModel() {
-        return dataModel;
+        if (dataModels == null || dataModels.isEmpty()) {
+            return null;
+        }
+        return dataModels.get(0);
     }
 
     public AdError getError() {
         return error;
     }
 
-    public static AdResponse fromJSONObject(JSONObject jsonObject) {
-        int refreshInterval = jsonObject.optInt("refresh", DEFAULT_REFRESH_INTERVAL_SECONDS);
-
-        AdDataModel data = null;
-        JSONObject dataObject = jsonObject.optJSONObject("data");
-        if (dataObject != null) {
-            String markup = dataObject.optString("markup");
-            String storeId = dataObject.optString("store_id");
-            String storeType = dataObject.optString("store_type");
-            data = new AdDataModel(markup, storeId, storeType);
-        }
+    public static AdResponse parseResponse(Context context, JSONObject jsonObject) {
+        // Server returns refresh interval in seconds
+        int refreshIntervalInMilli = jsonObject.optInt("refresh", DEFAULT_REFRESH_INTERVAL_SECONDS) * 1000;
 
         AdError error = null;
         JSONObject errorObject = jsonObject.optJSONObject("reason");
@@ -64,6 +63,29 @@ public class AdResponse {
             error = new AdError(errorObject.optInt("code"), errorObject.optString("message"));
         }
 
-        return new AdResponse(refreshInterval, data, error);
+        int adType = jsonObject.optInt("ad_type");
+        List<AdDataModel> dataModels =  new ArrayList<AdDataModel>();
+        JSONArray adsArray = jsonObject.optJSONArray("ads");
+        if (adsArray != null && adsArray.length() > 0) {
+            for (int i = 0; i < adsArray.length(); i++) {
+                AdDataModel dataModel = null;
+                if (adType == AdType.HTML.getValue()) {
+                    JSONObject dataObject = adsArray.optJSONObject(i).optJSONObject("data");
+                    dataModel = HtmlAdDataModel.fromJSONObject(dataObject);
+                } else if (adType == AdType.NATIVE.getValue()) {
+                    JSONObject dataObject = adsArray.optJSONObject(i).optJSONObject("metadata");
+                    dataModel = NativeAdDataModel.fromJSONObject(dataObject);
+                }
+                if (dataModel != null && !AdInvalidationUtils.shouldInvalidate(context, dataModel)) {
+                    dataModels.add(dataModel);
+                }
+            }
+            if (dataModels.isEmpty()) {
+                // All ads have been invalidated
+                error = AdError.CLIENT_INVALIDATION;
+            }
+        }
+
+        return new AdResponse(refreshIntervalInMilli, dataModels, error);
     }
 }
